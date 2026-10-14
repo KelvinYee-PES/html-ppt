@@ -69,3 +69,4 @@ Thumbs.db
 slide_*.png
 output_deck.pptx
 templated_output.pptx
+~$*.pptx
