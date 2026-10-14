@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+/build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+/lib/
+/lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Pytest & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+
+# Node & Frontend
+node_modules/
+frontend/dist/
+frontend/node_modules/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+tsconfig.app.tsbuildinfo
+tsconfig.node.tsbuildinfo
+
+# Ensure frontend lib is tracked
+!frontend/src/lib/
+
+# Runtime Data & Databases
+*.db
+*.sqlite3
+!data/.gitkeep
+
+# Operating System & IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# Temporary files & test outputs
+*.tmp
+*.log
+slide_*.png
+output_deck.pptx
+templated_output.pptx

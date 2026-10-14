@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Q3 2026 Business Review</title>
+<script src="vendor/chart.umd.min.js"></script>
+<style>
+  body { margin: 0; background: #0b1020; font-family: 'Inter', 'Segoe UI', sans-serif; color: #e5e7eb; }
+  .slide { width: 1280px; height: 720px; margin: 24px auto; padding: 56px 72px; box-sizing: border-box;
+           background: linear-gradient(135deg, #111827, #1e293b); border-radius: 16px; position: relative; overflow: hidden; }
+  h1 { font-size: 56px; margin: 0 0 16px; color: #fff; }
+  h2 { font-size: 36px; margin: 0 0 28px; color: #fff; }
+  .subtitle { font-size: 22px; color: #94a3b8; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+  .kpi { background: #1f2937; border-radius: 14px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+  .kpi .value { font-size: 44px; font-weight: 800; color: #60a5fa; }
+  .kpi .label { font-size: 16px; color: #9ca3af; margin-top: 6px; }
+  .kpi .delta { font-size: 14px; color: #34d399; margin-top: 8px; }
+  .delta.down { color: #f87171; }
+  ul { font-size: 22px; line-height: 1.6; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  table { width: 100%; border-collapse: collapse; font-size: 18px; }
+  th { background: #2563eb; color: #fff; text-align: left; padding: 12px; }
+  td { padding: 12px; border-bottom: 1px solid #334155; }
+  .chart-box { height: 420px; }
+  .steps { display: flex; gap: 20px; }
+  .step { flex: 1; background: #1f2937; border-radius: 12px; padding: 20px; border-top: 4px solid #60a5fa; }
+  .step .num { font-size: 14px; color: #60a5fa; font-weight: 700; }
+  .step h3 { margin: 6px 0; font-size: 20px; color: #fff; }
+  .step p { font-size: 15px; color: #cbd5e1; margin: 0; }
+  blockquote { font-size: 34px; font-style: italic; color: #fff; border-left: 6px solid #60a5fa; padding-left: 28px; margin: 80px 0 0; }
+  .attr { font-size: 18px; color: #94a3b8; margin-top: 18px; padding-left: 34px; }
+</style>
+</head>
+<body>
+<section class="slide">
+  <div style="margin-top: 180px">
+    <h1>Q3 2026 Business Review</h1>
+    <p class="subtitle">Executive Leadership Team · October 2026</p>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Key Performance Indicators</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="value">€48.2M</div><div class="label">Revenue</div><div class="delta">▲ 12% vs Q2</div></div>
+    <div class="kpi"><div class="value">31%</div><div class="label">EBITDA margin</div><div class="delta">▲ 2.4 pp</div></div>
+    <div class="kpi"><div class="value">1,240</div><div class="label">New customers</div><div class="delta">▲ 8%</div></div>
+    <div class="kpi"><div class="value">4.1%</div><div class="label">Churn rate</div><div class="delta down">▼ 0.6 pp</div></div>
+  </div>
+  <ul>
+    <li>Revenue growth driven by <strong>enterprise segment</strong> (+21%)</li>
+    <li>Margin expansion from procurement savings and pricing discipline</li>
+  </ul>
+</section>
+
+<section class="slide">
+  <h2>Revenue by Region</h2>
+  <div class="chart-box"><canvas id="rev"></canvas></div>
+</section>
+
+<section class="slide">
+  <h2>Strategic Priorities</h2>
+  <div class="cols">
+    <div>
+      <h3 style="font-size:24px;color:#60a5fa">Grow</h3>
+      <ul>
+        <li>Expand into DACH mid-market</li>
+        <li>Launch partner channel
+          <ul><li>10 resellers by Q1</li><li>Co-marketing budget €1.2M</li></ul>
+        </li>
+        <li>Upsell analytics add-on</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="font-size:24px;color:#60a5fa">Optimise</h3>
+      <ul>
+        <li>Consolidate data centres (3 → 1)</li>
+        <li>Automate tier-1 support with AI</li>
+        <li>Reduce DSO to 45 days</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <h2>Segment Performance</h2>
+  <table>
+    <thead><tr><th>Segment</th><th>Revenue (€M)</th><th>Growth</th><th>Margin</th></tr></thead>
+    <tbody>
+      <tr><td>Enterprise</td><td>26.4</td><td>+21%</td><td>36%</td></tr>
+      <tr><td>Mid-market</td><td>14.9</td><td>+6%</td><td>28%</td></tr>
+      <tr><td>SMB</td><td>6.9</td><td>-3%</td><td>19%</td></tr>
+      <tr><td><b>Total</b></td><td><b>48.2</b></td><td><b>+12%</b></td><td><b>31%</b></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="slide">
+  <h2>Roadmap to 2027</h2>
+  <div class="steps">
+    <div class="step"><div class="num">Q4 2026</div><h3>Foundation</h3><p>Data platform migration and partner onboarding.</p></div>
+    <div class="step"><div class="num">Q1 2027</div><h3>Scale</h3><p>DACH launch with 10 resellers.</p></div>
+    <div class="step"><div class="num">Q2 2027</div><h3>Automate</h3><p>AI support handles 60% of tickets.</p></div>
+    <div class="step"><div class="num">Q3 2027</div><h3>Expand</h3><p>Analytics add-on reaches 30% attach rate.</p></div>
+  </div>
+</section>
+
+<section class="slide">
+  <blockquote>“The best way to predict the future is to create it.”</blockquote>
+  <div class="attr">— Peter Drucker</div>
+</section>
+
+<script>
+new Chart(document.getElementById('rev'), {
+  type: 'bar',
+  data: { labels: ['DACH', 'Nordics', 'Benelux', 'UK', 'France'],
+    datasets: [
+      { label: 'Q2 2026', data: [14.1, 8.2, 6.5, 9.9, 4.3], backgroundColor: '#475569' },
+      { label: 'Q3 2026', data: [16.8, 9.1, 7.0, 10.4, 4.9], backgroundColor: '#60a5fa' } ] },
+  options: { maintainAspectRatio: false, animation: false, plugins: { title: { display: true, text: 'Revenue (€M)' } } }
+});
+</script>
+</body>
+</html>

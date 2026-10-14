@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+/*
+ * Pasteboard: a cool grey desk where the converted slides are the only
+ * saturated objects. "Proof" magenta is reserved for selection, focus and the
+ * crop marks around the active slide.
+ */
+@theme {
+  --color-board: #e4e6ea;
+  --color-board-deep: #d9dce1;
+  --color-panel: #ffffff;
+  --color-ink: #1a1d23;
+  --color-ink-2: #4b5260;
+  --color-ink-3: #6b7280;
+  --color-rule: #d3d7de;
+  --color-rule-soft: #e9ebef;
+  --color-proof: #c2185b;
+  --color-proof-soft: #fce8f0;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+  --color-ok: #1e7a4c;
+
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+
+  --shadow-sheet: 0 1px 2px rgb(26 29 35 / 0.08), 0 8px 24px -8px rgb(26 29 35 / 0.18);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html,
+  body {
+    background: var(--color-board);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-proof);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-proof-soft);
+  }
+}
+
+@layer components {
+  /* A slide is a size container so its EMU geometry can be expressed in cqw. */
+  .slide-frame {
+    container-type: inline-size;
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  /* Printer's crop marks just outside each corner of the active slide. */
+  .crop-marks {
+    position: relative;
+  }
+
+  .crop-marks > i {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+  }
+
+  .crop-marks > i::before,
+  .crop-marks > i::after {
+    content: "";
+    position: absolute;
+    background: var(--color-proof);
+  }
+
+  .crop-marks > i::before {
+    width: 14px;
+    height: 1px;
+  }
+
+  .crop-marks > i::after {
+    width: 1px;
+    height: 14px;
+  }
+
+  .crop-marks > i:nth-of-type(1) { top: -20px; left: -20px; }
+  .crop-marks > i:nth-of-type(1)::before { bottom: 0; left: -6px; top: auto; transform: translateY(6px); }
+  .crop-marks > i:nth-of-type(1)::after { right: 0; top: -6px; transform: translateX(6px); }
+
+  .crop-marks > i:nth-of-type(2) { top: -20px; right: -20px; }
+  .crop-marks > i:nth-of-type(2)::before { bottom: 0; right: -6px; transform: translateY(6px); }
+  .crop-marks > i:nth-of-type(2)::after { left: 0; top: -6px; transform: translateX(-6px); }
+
+  .crop-marks > i:nth-of-type(3) { bottom: -20px; left: -20px; }
+  .crop-marks > i:nth-of-type(3)::before { top: 0; left: -6px; transform: translateY(-6px); }
+  .crop-marks > i:nth-of-type(3)::after { right: 0; bottom: -6px; transform: translateX(6px); }
+
+  .crop-marks > i:nth-of-type(4) { bottom: -20px; right: -20px; }
+  .crop-marks > i:nth-of-type(4)::before { top: 0; right: -6px; transform: translateY(-6px); }
+  .crop-marks > i:nth-of-type(4)::after { left: 0; bottom: -6px; transform: translateX(-6px); }
+
+  /* Indeterminate progress line for the single "converting" moment. */
+  .progress-line {
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    overflow: hidden;
+    background: var(--color-proof-soft);
+  }
+
+  .progress-line::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 35%;
+    background: var(--color-proof);
+    animation: progress-slide 1.2s ease-in-out infinite;
+  }
+
+  @keyframes progress-slide {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(300%); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .progress-line::after {
+      animation: none;
+      width: 100%;
+      opacity: 0.6;
+    }
+  }
+
+  dialog::backdrop {
+    background: rgb(26 29 35 / 0.4);
+  }
+}
