@@ -95,9 +95,36 @@ def _apply_cell_borders(tc_pr, cell_data: lm.CellEl) -> None:
     if cell_data.border_bottom:
         clean_color = cell_data.border_bottom.lstrip("#")
         w_emu = int((cell_data.border_bottom_w or 1.0) * 12700)
-        xml = f'<a:lnB xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="{w_emu}" cmpd="s"><a:solidFill><a:srgbClr val="{clean_color}"/></a:solidFill></a:lnB>'
+        # ST_TextLineStyle: "s" is NOT a valid value — PowerPoint rejects the file
+        # outright when it sees cmpd="s". "sng" (single) is the intended style.
+        xml = f'<a:lnB xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="{w_emu}" cmpd="sng"><a:solidFill><a:srgbClr val="{clean_color}"/></a:solidFill></a:lnB>'
         tc_pr.append(parse_xml(xml))
     else:
         xml = '<a:lnB xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:noFill/></a:lnB>'
         tc_pr.append(parse_xml(xml))
+
+    # OOXML CT_TableCellProperties requires line elements *before* the fill
+    # element (lnL, lnR, lnT, lnB, ... then fill group). Appending borders after
+    # solidFill breaks the sequence and PowerPoint refuses to open the part.
+    _order_tc_pr_children(tc_pr)
+
+
+_TCPR_ORDER = [
+    "lnL", "lnR", "lnT", "lnB", "lnTlToBr", "lnBlToTr", "cell3D",
+    "noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill",
+    "headers", "extLst",
+]
+
+
+def _order_tc_pr_children(tc_pr) -> None:
+    children = list(tc_pr)
+
+    def sort_key(el):
+        name = el.tag.split("}")[-1]
+        return _TCPR_ORDER.index(name) if name in _TCPR_ORDER else len(_TCPR_ORDER)
+
+    for child in children:
+        tc_pr.remove(child)
+    for child in sorted(children, key=sort_key):
+        tc_pr.append(child)
 
