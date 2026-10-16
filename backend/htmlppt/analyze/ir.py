@@ -82,6 +82,7 @@ class Cell(BaseModel):
     align: Literal["left", "center", "right"] = "left"
     bold: bool = False
     tone: Literal["none", "positive", "negative"] = "none"
+    fill: str | None = None          # explicit source background (e.g. heatmap cells)
 
 
 class Table(_Block):

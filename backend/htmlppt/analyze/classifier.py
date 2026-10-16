@@ -169,6 +169,10 @@ def classify_leaf(n: dict, ctx: Ctx) -> list[ir.Block]:
                          is_logo="logo" in (n.get("alt", "") + n.get("cls", "")).lower())]
     if tag == "svg":
         b = n["box"]
+        img = n.get("img")
+        if img and max(b["w"], b["h"]) > 72:
+            # diagram-sized SVG was rasterized during extraction -> keep as picture
+            return [ir.Image(mime=img["mime"], b64=img["b64"], w=b["w"], h=b["h"], alt="diagram", src=src)]
         return [ir.VectorGraphic(svg=n["svg"], w=b["w"], h=b["h"], icon=max(b["w"], b["h"]) <= 72, src=src)]
     if tag == "hr":
         return []
@@ -223,7 +227,7 @@ def build_table(n: dict, src: dict) -> ir.Table:
                 s = _sentiment(txt, c.get("c"))
                 tone = s if s in ("positive", "negative") else "none"
             cells.append(ir.Cell(runs=runs, colspan=c.get("cs", 1), rowspan=c.get("rs", 1), header=bool(c.get("th")) and ri == header_rows,
-                                 align=align, bold=bool(c.get("b")), tone=tone))
+                                 align=align, bold=bool(c.get("b")), tone=tone, fill=c.get("bg")))
         if (row.get("head") or (cells and all(x.header for x in cells))) and ri == header_rows:
             header_rows += 1
         rows.append(cells)

@@ -67,14 +67,16 @@ def _deck_mode(nodes: list[dict], ctx: Ctx) -> ir.Deck:
 
 
 def _extract_title(slide: ir.Slide, blocks: list) -> None:
-    heads = [(i, b) for i, b in enumerate(blocks) if isinstance(b, ir.Heading) and b.column is None]
-    if not heads:
-        heads = [(i, b) for i, b in enumerate(blocks) if isinstance(b, ir.Heading)]
+    heads = [(i, b) for i, b in enumerate(blocks) if isinstance(b, ir.Heading)]
     if not heads:
         return
-    # prefer the most prominent heading among the first few blocks
-    early = [(i, b) for i, b in heads if i <= 2] or heads[:1]
-    i, h = min(early, key=lambda ib: (ib[1].level, ib[0]))
+    # prefer the topmost heading on the page (design decks put the page title in a
+    # flex header that may be column-tagged); fall back to declaration order
+    def rank(ib):
+        i, b = ib
+        y = b.src["y"] if b.src else float(i) * 1e6
+        return (y, b.level, i)
+    i, h = min(heads, key=rank)
     slide.title = ir.runs_text(h.runs).strip()
     blocks.pop(i)
     # kicker before title (short caption) or subtitle right after

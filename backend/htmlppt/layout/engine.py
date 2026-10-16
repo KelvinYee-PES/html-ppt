@@ -10,7 +10,7 @@ from typing import Sequence
 
 from htmlppt import EMU_PER_INCH, EMU_PER_PT
 from htmlppt.analyze import ir
-from htmlppt.brand.model import BrandProfile, hex_to_rgb
+from htmlppt.brand.model import BrandProfile, hex_to_rgb, luminance
 from htmlppt.layout import model as lm
 from htmlppt.layout.archetypes import select_archetype
 from htmlppt.layout.grid import Rect, SlideGeometry
@@ -1059,103 +1059,284 @@ def _layout_content_slide(slide: ir.Slide, brand: BrandProfile, geom: SlideGeome
 
 # ---------------------------------------------------------------- Block Stack Layout
 
+# Vertical gap between stacked blocks in the flow layout, in points.
+_STACK_GAP_PT = 10
+
+# Minimum fraction of the preferred font size that shrink-to-fit may use.
+_FIT_MIN_SCALE = 0.68
+
+
+def _para_role_size(role: str, brand: BrandProfile) -> float:
+    if role == "lead":
+        return brand.fonts.sizes.body * 1.15
+    if role in ("caption", "footnote"):
+        return brand.fonts.sizes.caption
+    return brand.fonts.sizes.body
+
+
+def _heading_size(level: int, brand: BrandProfile) -> float:
+    if level <= 1:
+        return brand.fonts.sizes.title * 0.75
+    if level == 2:
+        return brand.fonts.sizes.title * 0.65
+    if level >= 4:
+        return brand.fonts.sizes.heading * 0.85
+    return brand.fonts.sizes.heading
+
+
+def _measure_paras(paras: Sequence[lm.Para], width_emu: int, inset_emu: int = 0) -> int:
+    """Estimate rendered height (EMU) of a list of model paragraphs in a box."""
+    from htmlppt.layout.textfit import wrap_text_to_lines
+
+    avail_pt = max(20.0, (width_emu - 2 * inset_emu) / EMU_PER_PT)
+    total = 0.0
+    for p in paras:
+        text = "".join(r.text for r in p.runs)
+        bold = any(r.bold for r in p.runs)
+        size = max((r.size for r in p.runs), default=16)
+        font = p.runs[0].font if p.runs else "Calibri"
+        lines = max(1, len(wrap_text_to_lines(text, avail_pt, font, size, bold)))
+        total += lines * size * p.line_spacing + p.space_before + p.space_after
+    return int(total * EMU_PER_PT)
+
+
+def _measure_block(block: ir._Block, rect: Rect, brand: BrandProfile, scale: float = 1.0) -> int:
+    """Estimate natural height (EMU) of one IR block at a column width."""
+    pad = int(0.2 * EMU_PER_INCH)
+
+    def sz(v: float) -> float:
+        return max(brand.fonts.sizes.min, v * scale)
+
+    if isinstance(block, ir.Heading):
+        text = ir.runs_text(block.runs)
+        return _measure_paras([lm.Para(runs=[lm.TRun(text=text, font=brand.fonts.heading.family,
+                                                    size=sz(_heading_size(block.level, brand)), color=brand.roles.text)])],
+                              rect.w) + int(4 * EMU_PER_PT)
+    if isinstance(block, ir.Paragraph):
+        text = ir.runs_text(block.runs)
+        size = sz(_para_role_size(block.role, brand))
+        return _measure_paras([lm.Para(runs=[lm.TRun(text=text, font=brand.fonts.body.family,
+                                                    size=size, color=brand.roles.text)])], rect.w)
+    if isinstance(block, ir.BulletList):
+        h = 0
+        for it in block.items:
+            text = "".join(r.t for r in it.runs)
+            size = sz(brand.fonts.sizes.body)
+            h += _measure_paras([lm.Para(runs=[lm.TRun(text=text, font=brand.fonts.body.family,
+                                                       size=size, color=brand.roles.text)])], rect.w) + int(2 * EMU_PER_PT)
+        return h
+    if isinstance(block, ir.Callout):
+        body_h = 0
+        if block.title:
+            body_h += _measure_paras([lm.Para(runs=[lm.TRun(text=block.title, font=brand.fonts.heading.family,
+                                                            size=sz(brand.fonts.sizes.heading * 0.8), color=brand.roles.text)])],
+                                     rect.w - 2 * pad)
+        text = ir.runs_text(block.runs).replace("\n", " ")
+        body_h += _measure_paras([lm.Para(runs=[lm.TRun(text=text, font=brand.fonts.body.family,
+                                                        size=sz(brand.fonts.sizes.body * 0.85), color=brand.roles.text)])],
+                                 rect.w - 2 * pad)
+        return body_h + 2 * pad
+    if isinstance(block, ir.Quote):
+        text = ir.runs_text(block.runs)
+        return _measure_paras([lm.Para(runs=[lm.TRun(text=text, font=brand.fonts.heading.family,
+                                                     size=sz(brand.fonts.sizes.subtitle), color=brand.roles.text)])],
+                              rect.w - int(0.5 * EMU_PER_INCH)) + int(0.35 * EMU_PER_INCH)
+    if isinstance(block, ir.KPIGroup):
+        return int(1.25 * EMU_PER_INCH * scale + (0 if scale >= 0.99 else 0))
+    if isinstance(block, ir.CardGrid):
+        n = len(block.cards)
+        cols = min(n, 4)
+        rows = max(1, math.ceil(n / cols))
+        card_h = int(1.35 * EMU_PER_INCH)
+        return rows * card_h + (rows - 1) * brand.design.gutter
+    if isinstance(block, ir.Table):
+        est = len(block.rows) * int(0.42 * EMU_PER_INCH)
+        return min(est, rect.h)
+    if isinstance(block, ir.Chart):
+        return int(min(rect.h, 2.8 * EMU_PER_INCH))
+    if isinstance(block, ir.Image):
+        aspect = block.w / max(block.h, 1)
+        w = min(rect.w, int(4.5 * EMU_PER_INCH))
+        return min(int(w / max(aspect, 0.3)), rect.h)
+    if isinstance(block, ir.VectorGraphic):
+        aspect = block.w / max(block.h, 1)
+        w = rect.w
+        return min(int(w / max(aspect, 0.4)), int(rect.h * 0.75))
+    if isinstance(block, ir.Freeform):
+        return min(int(rect.w / max(block.aspect, 0.4)), rect.h)
+    return int(0.6 * EMU_PER_INCH)
+
+
+def _group_callout_rows(blocks: Sequence[ir._Block]) -> list[list[ir._Block]]:
+    """Group consecutive same-column callouts that share a source row (matrix bands)."""
+    groups: list[list[ir._Block]] = []
+    for b in blocks:
+        if (isinstance(b, ir.Callout) and b.src
+                and groups and all(isinstance(x, ir.Callout) and x.src for x in groups[-1])
+                and groups[-1][0].column == b.column):
+            ref_y = (groups[-1][-1].src["y"] + groups[-1][-1].src["h"] / 2)
+            cur_y = b.src["y"] + b.src["h"] / 2
+            if abs(cur_y - ref_y) <= max(18, 0.55 * b.src["h"]):
+                groups[-1].append(b)
+                continue
+        groups.append([b])
+    return groups
+
+
 def _layout_block_stack(blocks: Sequence[ir.Block], rect: Rect, brand: BrandProfile, sm: lm.SlideModel) -> None:
-    """Stack blocks vertically inside the given rectangle."""
+    """Stack blocks inside the rectangle, preserving design semantics and fitting.
+
+    Every IR block kind is rendered (nothing silently dropped); heights are
+    wrap-aware so text boxes never overlap, and the whole stack shrinks its
+    fonts (down to a floor) instead of running off the slide.
+    """
     if not blocks:
         return
+    scale = 1.0
+    group_block_lists = _group_callout_rows(blocks)
+    group_heights: list[int] = []
+    gaps = _STACK_GAP_PT * EMU_PER_PT
+    for _attempt in range(4):
+        group_heights = [
+            max(_measure_block(b, rect, brand, scale) for b in grp) for grp in group_block_lists
+        ]
+        needed = sum(group_heights) + gaps * max(0, len(group_heights) - 1)
+        if needed <= rect.h or scale <= _FIT_MIN_SCALE:
+            break
+        scale = max(_FIT_MIN_SCALE, rect.h / needed * 0.97)
 
     cur_y = rect.y
-    text_paras: list[lm.Para] = []
-    text_start_y = cur_y
+    for gi, grp in enumerate(group_block_lists):
+        h = group_heights[gi]
+        h = min(h, max(0, rect.bottom - cur_y))
+        _emit_block_group(grp, Rect(x=rect.x, y=cur_y, w=rect.w, h=h), brand, sm, scale)
+        cur_y += h + gaps
+        if cur_y > rect.bottom:
+            break
 
-    def flush_text():
-        nonlocal text_paras, text_start_y, cur_y
-        if not text_paras:
+
+def _emit_block_group(grp: Sequence[ir._Block], rect: Rect, brand: BrandProfile,
+                      sm: lm.SlideModel, scale: float) -> None:
+    """Render one stacked group; multi-member groups are horizontal matrix bands."""
+    if len(grp) == 1:
+        _emit_block(grp[0], rect, brand, sm, scale)
+        return
+    total_src_w = sum(b.src["w"] for b in grp) or len(grp)
+    gap = int(brand.design.gutter * 0.5)
+    x = rect.x
+    avail = rect.w - gap * (len(grp) - 1)
+    for b in grp:
+        w = max(int(0.4 * EMU_PER_INCH), int(avail * b.src["w"] / total_src_w))
+        _emit_block(b, Rect(x=x, y=rect.y, w=w, h=rect.h), brand, sm, scale)
+        x += w + gap
+
+
+def _emit_block(b: ir._Block, rect: Rect, brand: BrandProfile, sm: lm.SlideModel, scale: float = 1.0) -> None:
+    """Render a single IR block into the given rectangle."""
+    pad = int(0.2 * EMU_PER_INCH)
+
+    def scaled(v: float) -> float:
+        return max(brand.fonts.sizes.min, v * scale)
+
+    if isinstance(b, ir.Heading):
+        sm.elements.append(lm.TextEl(
+            name="Content Heading", x=rect.x, y=rect.y, w=rect.w, h=rect.h,
+            paras=[lm.Para(runs=[_ir_run_to_trun(r, brand, is_heading=True,
+                                                 size=scaled(_heading_size(b.level, brand))) for r in b.runs])],
+            valign="top",
+        ))
+    elif isinstance(b, ir.Paragraph):
+        size = scaled(_para_role_size(b.role, brand))
+        sm.elements.append(lm.TextEl(
+            name="Content Text", x=rect.x, y=rect.y, w=rect.w, h=rect.h,
+            paras=[lm.Para(runs=[_ir_run_to_trun(r, brand, is_heading=False, size=size) for r in b.runs],
+                           align=b.align)],
+            valign="top",
+        ))
+    elif isinstance(b, ir.BulletList):
+        size = scaled(brand.fonts.sizes.body)
+        paras = []
+        for it in b.items:
+            paras.append(lm.Para(
+                runs=[_ir_run_to_trun(r, brand, is_heading=False, size=size) for r in it.runs],
+                level=it.level, bullet="1." if b.ordered else "•", space_before=2, space_after=2,
+            ))
+        sm.elements.append(lm.TextEl(name="Content Bullets", x=rect.x, y=rect.y, w=rect.w, h=rect.h,
+                                     paras=paras, valign="top"))
+    elif isinstance(b, ir.Callout):
+        fill = {"positive": brand.roles.positive, "negative": brand.roles.negative,
+                "warning": brand.colors.accent4}.get(b.tone, brand.roles.surface)
+        light = luminance(fill.lstrip("#")) >= 0.55 or b.tone == "info"
+        text_color = brand.roles.text if light else brand.roles.on_primary
+        muted_color = brand.roles.muted if light else "FFFFFF"
+        paras = []
+        if b.title:
+            paras.append(lm.Para(runs=[lm.TRun(text=b.title, font=brand.fonts.heading.family,
+                                               size=scaled(brand.fonts.sizes.heading * 0.8),
+                                               color=text_color, bold=True)], space_after=3))
+        body_text = ir.runs_text(b.runs).replace("\n", " ")
+        paras.append(lm.Para(runs=[lm.TRun(text=body_text, font=brand.fonts.body.family,
+                                           size=scaled(brand.fonts.sizes.body * 0.85),
+                                           color=text_color if light else "FFFFFF")]))
+        sm.elements.append(lm.ShapeEl(
+            name=f"Callout {b.title or body_text[:18]}", x=rect.x, y=rect.y, w=rect.w, h=rect.h,
+            geom="roundRect", radius=0.12, fill=fill, line=None,
+            paras=paras, inset=pad, valign="middle",
+        ))
+    elif isinstance(b, ir.Quote):
+        bar_w = int(5 * EMU_PER_PT)
+        sm.elements.append(lm.ShapeEl(name="Quote Bar", x=rect.x, y=rect.y + int(rect.h * 0.1),
+                                      w=bar_w, h=int(rect.h * 0.8), geom="rect",
+                                      fill=brand.roles.primary, line=None))
+        tx = rect.x + bar_w + int(0.18 * EMU_PER_INCH)
+        paras = [lm.Para(runs=[lm.TRun(text=ir.runs_text(b.runs), font=brand.fonts.heading.family,
+                                       size=scaled(brand.fonts.sizes.subtitle),
+                                       color=brand.roles.text, italic=True)])]
+        if b.attribution:
+            paras.append(lm.Para(runs=[lm.TRun(text=f"— {b.attribution}", font=brand.fonts.body.family,
+                                               size=scaled(brand.fonts.sizes.body),
+                                               color=brand.roles.muted)], space_before=4))
+        sm.elements.append(lm.TextEl(name="Quote Text", x=tx, y=rect.y, w=rect.w - (tx - rect.x),
+                                     h=rect.h, paras=paras, valign="middle"))
+    elif isinstance(b, ir.KPIGroup):
+        n = len(b.items)
+        if not n:
             return
-        th = max(cur_y - text_start_y, int(0.5 * EMU_PER_INCH))
-        sm.elements.append(
-            lm.TextEl(
-                name="Content Text",
-                x=rect.x,
-                y=text_start_y,
-                w=rect.w,
-                h=th,
-                paras=text_paras,
-                valign="top",
-            )
-        )
-        text_paras = []
-
-    for b in blocks:
-        if isinstance(b, ir.Heading):
-            flush_text()
-            text_start_y = cur_y
-            text_paras.append(
-                lm.Para(
-                    runs=[_ir_run_to_trun(r, brand, is_heading=True) for r in b.runs],
-                    space_before=8 if cur_y > rect.y else 0,
-                    space_after=4,
-                )
-            )
-            cur_y += int(brand.fonts.sizes.heading * 1.5 * EMU_PER_PT)
-        elif isinstance(b, ir.Paragraph):
-            if not text_paras:
-                text_start_y = cur_y
-            text_paras.append(
-                lm.Para(
-                    runs=[_ir_run_to_trun(r, brand, is_heading=False) for r in b.runs],
-                    space_before=4,
-                    space_after=4,
-                )
-            )
-            cur_y += int(brand.fonts.sizes.body * 1.4 * EMU_PER_PT)
-        elif isinstance(b, ir.BulletList):
-            if not text_paras:
-                text_start_y = cur_y
-            for it in b.items:
-                text_paras.append(
-                    lm.Para(
-                        runs=[_ir_run_to_trun(r, brand, is_heading=False) for r in it.runs],
-                        level=it.level,
-                        bullet="1." if b.ordered else "•",
-                        space_before=2,
-                        space_after=2,
-                    )
-                )
-                cur_y += int(brand.fonts.sizes.body * 1.35 * EMU_PER_PT)
-        elif isinstance(b, ir.Table):
-            flush_text()
-            avail_h = rect.bottom - cur_y
-            tbl_h = min(avail_h, int(len(b.rows) * 0.45 * EMU_PER_INCH))
-            _build_table_element(b, rect.x, cur_y, rect.w, tbl_h, brand, sm)
-            cur_y += tbl_h + brand.design.gutter
-            text_start_y = cur_y
-        elif isinstance(b, ir.Chart):
-            flush_text()
-            avail_h = rect.bottom - cur_y
-            _build_chart_element(b.spec, rect.x, cur_y, rect.w, avail_h, brand, sm)
-            cur_y = rect.bottom
-            text_start_y = cur_y
-        elif isinstance(b, ir.Image):
-            flush_text()
-            img_w = min(rect.w, int(3.5 * EMU_PER_INCH))
-            aspect = (b.w / max(b.h, 1)) if (b.w and b.h) else 1.5
-            img_h = int(img_w / aspect)
-            sm.elements.append(
-                lm.ImageEl(
-                    name="Content Image",
-                    x=rect.x,
-                    y=cur_y,
-                    w=img_w,
-                    h=img_h,
-                    mime=b.mime,
-                    b64=b.b64,
-                )
-            )
-            cur_y += img_h + brand.design.gutter
-            text_start_y = cur_y
-
-    flush_text()
+        gap = brand.design.gutter
+        tile_w = (rect.w - gap * (n - 1)) // n
+        for i, kpi in enumerate(b.items):
+            _build_kpi_card(kpi, rect.x + i * (tile_w + gap), rect.y, tile_w, rect.h, brand, sm)
+    elif isinstance(b, ir.CardGrid):
+        n = len(b.cards)
+        if not n:
+            return
+        gap = brand.design.gutter
+        cols = min(n, 4)
+        rows = max(1, math.ceil(n / cols))
+        tile_w = (rect.w - gap * (cols - 1)) // cols
+        tile_h = (rect.h - gap * (rows - 1)) // rows
+        for i, card in enumerate(b.cards):
+            r, c = divmod(i, cols)
+            _build_card_element(card, rect.x + c * (tile_w + gap), rect.y + r * (tile_h + gap),
+                                tile_w, tile_h, b.variant, brand, sm)
+    elif isinstance(b, ir.Table):
+        _build_table_element(b, rect.x, rect.y, rect.w, rect.h, brand, sm)
+    elif isinstance(b, ir.Chart):
+        _build_chart_element(b.spec, rect.x, rect.y, rect.w, rect.h, brand, sm)
+    elif isinstance(b, ir.Image):
+        w, h = rect.w, rect.h
+        if b.w and b.h:
+            aspect = b.w / b.h
+            if w / max(h, 1) > aspect:
+                w = max(1, int(h * aspect))
+            else:
+                h = max(1, int(w / aspect))
+        sm.elements.append(lm.ImageEl(name="Content Image", x=rect.x, y=rect.y, w=w, h=h,
+                                      mime=b.mime, b64=b.b64))
+    elif isinstance(b, ir.VectorGraphic):
+        return  # decorative/inline SVG without raster bytes — not renderable in flow
+    elif isinstance(b, ir.Freeform):
+        _render_freeform_into(rect, b, brand, sm)
 
 
 # ---------------------------------------------------------------- Component Builders
@@ -1219,25 +1400,31 @@ def _build_table_element(
         is_total = table.total_row and ri == n_rows - 1
 
         for ci, cell in enumerate(row):
+            # Background fill: explicit source color wins (heatmap / matrix cells)
+            fill = cell.fill if getattr(cell, "fill", None) else None
+            if fill is None:
+                if is_head:
+                    fill = brand.roles.surface
+                elif ri % 2 == 1:
+                    fill = brand.roles.surface
+                elif is_total:
+                    fill = brand.roles.surface
+
+            if cell.fill:
+                text_color = brand.roles.text if luminance(cell.fill.lstrip("#")) >= 0.5 else "FFFFFF"
+            else:
+                text_color = brand.roles.text
+
             runs = [
                 lm.TRun(
                     text=r.t,
                     font=brand.fonts.heading.family if is_head else brand.fonts.body.family,
                     size=brand.fonts.sizes.body if not is_head else brand.fonts.sizes.body * 1.05,
-                    color=brand.roles.text,
+                    color=text_color,
                     bold=is_head or is_total or cell.bold,
                 )
                 for r in cell.runs
             ]
-
-            # Background fill
-            fill = None
-            if is_head:
-                fill = brand.roles.surface
-            elif ri % 2 == 1:
-                fill = brand.roles.surface
-            elif is_total:
-                fill = brand.roles.surface
 
             border_bottom = brand.roles.border if (is_head or brand.design.table_style != "minimal") else None
             border_bottom_w = 1.5 if is_head else 0.75
@@ -1269,10 +1456,11 @@ def _build_table_element(
     )
 
 
-def _ir_run_to_trun(r: ir.Run, brand: BrandProfile, is_heading: bool = False) -> lm.TRun:
+def _ir_run_to_trun(r: ir.Run, brand: BrandProfile, is_heading: bool = False,
+                    size: float | None = None) -> lm.TRun:
     color = brand.roles.primary if r.emphasis else (brand.roles.text if not is_heading else brand.roles.primary)
     font = brand.fonts.heading.family if is_heading else brand.fonts.body.family
-    size = brand.fonts.sizes.heading if is_heading else brand.fonts.sizes.body
+    size = size if size is not None else (brand.fonts.sizes.heading if is_heading else brand.fonts.sizes.body)
     return lm.TRun(
         text=r.t,
         font=font,
